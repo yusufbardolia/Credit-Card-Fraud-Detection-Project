@@ -1,65 +1,70 @@
+# Step 1: Import Necessary Libraries
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-import joblib
 import numpy as np
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve, auc
+import matplotlib.pyplot as plt
+import joblib
 
-# Step 1: Load the Trained Model
-model = joblib.load('credit_fraud_detection_model.pkl')
-print("Model loaded successfully.")
+# Step 2: Load the Model
+model_filename = 'credit_fraud_detection_model.pkl'
+rf_model = joblib.load(model_filename)
 
-# Step 2: Create a Sample DataFrame with All Required Columns
-# Assuming your model was trained with columns V1 to V28, scaled_amount, and scaled_time
+# Step 3: Load the Test Dataset
+# Replace this path with the actual path to your test dataset
+test_data_path = r'c:\Users\yusuf\Downloads\archive (4)\fraudTest.csv'
+test_data = pd.read_csv(test_data_path)
 
-# Mock data for demonstration (you would replace this with actual new data)
-new_data = pd.DataFrame({
-    'V1': np.random.randn(4),
-    'V2': np.random.randn(4),
-    'V3': np.random.randn(4),
-    'V4': np.random.randn(4),
-    'V5': np.random.randn(4),
-    'V6': np.random.randn(4),
-    'V7': np.random.randn(4),
-    'V8': np.random.randn(4),
-    'V9': np.random.randn(4),
-    'V10': np.random.randn(4),
-    'V11': np.random.randn(4),
-    'V12': np.random.randn(4),
-    'V13': np.random.randn(4),
-    'V14': np.random.randn(4),
-    'V15': np.random.randn(4),
-    'V16': np.random.randn(4),
-    'V17': np.random.randn(4),
-    'V18': np.random.randn(4),
-    'V19': np.random.randn(4),
-    'V20': np.random.randn(4),
-    'V21': np.random.randn(4),
-    'V22': np.random.randn(4),
-    'V23': np.random.randn(4),
-    'V24': np.random.randn(4),
-    'V25': np.random.randn(4),
-    'V26': np.random.randn(4),
-    'V27': np.random.randn(4),
-    'V28': np.random.randn(4),
-    'Amount': [100.0, 250.0, 15.0, 75.0],
-    'Time': [50000, 60000, 70000, 80000]
-})
+# Print column names to verify them
+print("Column names in the test dataset:", test_data.columns)
 
-# Feature Scaling for 'Amount' and 'Time'
+# Convert categorical columns to numeric using the same encoders as for training
+# Load or define label encoders if they are saved
+label_encoders = {
+    'merchant': LabelEncoder(),
+    'category': LabelEncoder(),
+    'gender': LabelEncoder(),
+    'job': LabelEncoder()
+}
+
+# Ensure label encoders are fitted with the training data categories
+for column, le in label_encoders.items():
+    test_data[column] = le.fit_transform(test_data[column])
+
+# Convert 'trans_date_trans_time' to UNIX timestamp
+test_data['trans_date_trans_time'] = pd.to_datetime(test_data['trans_date_trans_time'])
+test_data['trans_date_trans_time'] = test_data['trans_date_trans_time'].astype(np.int64)  # Use UNIX timestamps
+
+# Feature Scaling
 scaler = StandardScaler()
-new_data['scaled_amount'] = scaler.fit_transform(new_data['Amount'].values.reshape(-1, 1))
-new_data['scaled_time'] = scaler.fit_transform(new_data['Time'].values.reshape(-1, 1))
-new_data = new_data.drop(['Amount', 'Time'], axis=1)
+test_data['scaled_amt'] = scaler.fit_transform(test_data[['amt']])
+test_data['scaled_trans_time'] = scaler.fit_transform(test_data[['trans_date_trans_time']])
 
-print("New data prepared with all required features.")
+# Drop columns not used in modeling
+test_data = test_data.drop(['amt', 'trans_date_trans_time', 'Unnamed: 0', 'cc_num', 'first', 'last', 'street', 'city', 'state', 'zip', 'lat', 'long', 'city_pop', 'dob', 'trans_num', 'unix_time', 'merch_lat', 'merch_long'], axis=1)
 
-# Step 3: Make Predictions
-predictions = model.predict(new_data)
-print("Predictions complete.")
+# Prepare the features and target for testing
+X_test = test_data.drop('is_fraud', axis=1)
+y_test = test_data['is_fraud']
 
-# Output the predictions
-print("Predictions:", predictions)
+# Step 4: Make Predictions
+y_pred = rf_model.predict(X_test)
 
-# Save the predictions to a CSV file
-new_data['Prediction'] = predictions
-new_data.to_csv('predictions.csv', index=False)
-print("Predictions saved to predictions.csv.")
+# Step 5: Evaluate Performance
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+print("Classification Report:\n", classification_report(y_test, y_pred))
+print(f'ROC-AUC Score: {roc_auc_score(y_test, y_pred)}')
+
+# Plot ROC Curve
+fpr, tpr, _ = roc_curve(y_test, y_pred)
+roc_auc = auc(fpr, tpr)
+plt.figure()
+plt.plot(fpr, tpr, color='darkgreen', lw=2, label='Random Forest ROC curve (area = %0.2f)' % roc_auc)
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic for Random Forest')
+plt.legend(loc="lower right")
+plt.show()
